@@ -2,19 +2,18 @@ group 'com.dooboolab.flutterinapppurchase'
 version '1.0-SNAPSHOT'
 
 buildscript {
-    ext.kotlin_version = '1.8.10'
+    ext.kotlin_version = '1.9.24' // Updated to latest stable Kotlin version
     repositories {
         google()
         mavenCentral()
     }
-
     dependencies {
-        classpath 'com.android.tools.build:gradle:7.4.2'
+        classpath 'com.android.tools.build:gradle:8.1.0' // Updated Gradle plugin
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
 
-rootProject.allprojects {
+allprojects {
     repositories {
         google()
         mavenCentral()
@@ -25,36 +24,34 @@ apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 
 android {
-    if (project.android.hasProperty('namespace')) {
-        namespace 'com.dooboolab.flutterinapppurchase'
-    }
-    compileSdkVersion 33
+    namespace 'com.dooboolab.flutterinapppurchase'
+    compileSdkVersion 34 // Updated to match your app's compileSdkVersion
 
     defaultConfig {
         minSdkVersion 21
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
+
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
     }
+
     lintOptions {
         disable 'InvalidPackage'
     }
+
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_11 // Updated to Java 11
+        targetCompatibility JavaVersion.VERSION_11
     }
 
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = '11' // Updated to Java 11
     }
 }
 
 dependencies {
-    def billing_version = "8.0.0"
-
-    implementation "com.android.billingclient:billing-ktx:$billing_version"
-    implementation files('jars/in-app-purchasing-2.0.76.jar')
+    implementation "com.android.billingclient:billing-ktx:8.0.0"
+    implementation files('jars/in-app-purchasing-2.0.76.jar') // For Amazon support
     implementation 'androidx.annotation:annotation:1.6.0'
 }
-
