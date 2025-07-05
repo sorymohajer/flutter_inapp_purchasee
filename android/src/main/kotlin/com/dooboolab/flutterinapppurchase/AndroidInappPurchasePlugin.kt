@@ -350,201 +350,203 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler, App
         }
     }
 
-    private fun getPurchaseHistoryByType(call: MethodCall, safeChannel: MethodResultWrapper) {
-        val type = if (call.argument<String>("type") == "subs") BillingClient.ProductType.SUBS else BillingClient.ProductType.INAPP
-        val params = QueryPurchaseHistoryParams.newBuilder().setProductType(type).build()
+  private fun getPurchaseHistoryByType(call: MethodCall, safeChannel: MethodResultWrapper) {
+    val type = if (call.argument<String>("type") == "subs") BillingClient.ProductType.SUBS else BillingClient.ProductType.INAPP
+    val params = QueryPurchaseHistoryParams.newBuilder().setProductType(type).build()
 
-        billingClient!!.queryPurchaseHistory(params) { billingResult, purchaseHistoryRecordList ->
-            if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
-                val errorData = BillingError.getErrorFromResponseData(billingResult.responseCode)
-                safeChannel.error(call.method, errorData.code, errorData.message)
-                return@queryPurchaseHistory
-            }
-            val items = JSONArray()
-            try {
-                purchaseHistoryRecordList?.forEach { purchase ->
-                    val item = JSONObject()
-                    item.put("productId", purchase.products[0])
-                    item.put("transactionDate", purchase.purchaseTime)
-                    item.put("transactionReceipt", purchase.originalJson)
-                    item.put("purchaseToken", purchase.purchaseToken)
-                    item.put("dataAndroid", purchase.originalJson)
-                    item.put("signatureAndroid", purchase.signature)
-                    items.put(item)
-                }
-                safeChannel.success(items.toString())
-                return@queryPurchaseHistory
-            } catch (je: JSONException) {
-                je.printStackTrace()
-                safeChannel.error(TAG, BillingError.E_BILLING_RESPONSE_JSON_PARSE_ERROR, je.message)
-            }
+    billingClient!!.queryPurchaseHistoryAsync(params) { billingResult, purchaseHistoryRecordList ->
+        if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
+            val errorData = BillingError.getErrorFromResponseData(billingResult.responseCode)
+            safeChannel.error(call.method, errorData.code, errorData.message)
+            return@queryPurchaseHistoryAsync
         }
-    }
-
-    private fun getProductsByType(productType: String, call: MethodCall, safeChannel: MethodResultWrapper) {
-        val productIds: ArrayList<String> = call.argument<ArrayList<String>>("productIds")!!
-        val params = ArrayList<QueryProductDetailsParams.Product>()
-        productIds.forEach { productId ->
-            params.add(QueryProductDetailsParams.Product.newBuilder().setProductId(productId).setProductType(productType).build())
-        }
-
-        billingClient!!.queryProductDetailsAsync(
-            QueryProductDetailsParams.newBuilder().setProductList(params).build()
-        ) { billingResult, products ->
-            if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
-                val errorData = BillingError.getErrorFromResponseData(billingResult.responseCode)
-                safeChannel.error(call.method, errorData.code, errorData.message)
-                return@queryProductDetailsAsync
-            }
-
-            try {
-                val items = JSONArray()
-                products.forEach { productDetails ->
-                    if (!productDetailsList.contains(productDetails)) {
-                        productDetailsList.add(productDetails)
-                    }
-
-                    val item = JSONObject()
-                    item.put("productId", productDetails.productId)
-                    item.put("type", productDetails.productType)
-                    item.put("title", productDetails.title)
-                    item.put("description", productDetails.description)
-
-                    if (productDetails.productType == BillingClient.ProductType.INAPP) {
-                        val oneTimePurchaseOfferDetails = productDetails.oneTimePurchaseOfferDetails
-                        if (oneTimePurchaseOfferDetails != null) {
-                            item.put("price", (oneTimePurchaseOfferDetails.priceAmountMicros / 1_000_000.0).toString())
-                            item.put("currency", oneTimePurchaseOfferDetails.priceCurrencyCode)
-                            item.put("localizedPrice", oneTimePurchaseOfferDetails.formattedPrice)
-                        }
-                    } else if (productDetails.productType == BillingClient.ProductType.SUBS) {
-                        val firstOffer = productDetails.subscriptionOfferDetails?.firstOrNull { it.offerId == null }
-                        if (firstOffer != null && firstOffer.pricingPhases.pricingPhaseList.isNotEmpty()) {
-                            val defaultPricingPhase = firstOffer.pricingPhases.pricingPhaseList[0]
-                            item.put("price", (defaultPricingPhase.priceAmountMicros / 1_000_000.0).toString())
-                            item.put("currency", defaultPricingPhase.priceCurrencyCode)
-                            item.put("localizedPrice", defaultPricingPhase.formattedPrice)
-                            item.put("subscriptionPeriodAndroid", defaultPricingPhase.billingPeriod)
-                        }
-
-                        val subs = JSONArray()
-                        productDetails.subscriptionOfferDetails?.forEach { offer ->
-                            val offerItem = JSONObject()
-                            offerItem.put("offerId", offer.offerId ?: "")
-                            offerItem.put("basePlanId", offer.basePlanId)
-                            offerItem.put("offerToken", offer.offerToken)
-                            val pricingPhases = JSONArray()
-                            offer.pricingPhases.pricingPhaseList.forEach { pricing ->
-                                val pricingPhase = JSONObject()
-                                pricingPhase.put("price", (pricing.priceAmountMicros / 1_000_000.0).toString())
-                                pricingPhase.put("formattedPrice", pricing.formattedPrice)
-                                pricingPhase.put("billingPeriod", pricing.billingPeriod)
-                                pricingPhase.put("currencyCode", pricing.priceCurrencyCode)
-                                pricingPhase.put("recurrenceMode", pricing.recurrenceMode)
-                                pricingPhase.put("billingCycleCount", pricing.billingCycleCount)
-                                pricingPhases.put(pricingPhase)
-                            }
-                            offerItem.put("pricingPhases", pricingPhases)
-                            subs.put(offerItem)
-                        }
-                        item.put("subscriptionOffers", subs)
-                    }
-
-                    items.put(item)
-                }
-                safeChannel.success(items.toString())
-                return@queryProductDetailsAsync
-            } catch (je: JSONException) {
-                je.printStackTrace()
-                safeChannel.error(TAG, BillingError.E_BILLING_RESPONSE_JSON_PARSE_ERROR, je.message)
-            } catch (fe: FlutterException) {
-                safeChannel.error(call.method, fe.message, fe.localizedMessage)
-                return@queryProductDetailsAsync
-            }
-        }
-    }
-
-    private fun buyProduct(call: MethodCall, safeChannel: MethodResultWrapper) {
+        val items = JSONArray()
         try {
-            val type = if (call.argument<String>("type") == "subs") BillingClient.ProductType.SUBS else BillingClient.ProductType.INAPP
-            val obfuscatedAccountId = call.argument<String>("obfuscatedAccountId")
-            val obfuscatedProfileId = call.argument<String>("obfuscatedProfileId")
-            val productId = call.argument<String>("productId")
-            val prorationMode = call.argument<Int>("prorationMode") ?: -1
-            val purchaseToken = call.argument<String>("purchaseToken")
-            val offerTokenIndex = call.argument<Int>("offerTokenIndex")
-            val builder = BillingFlowParams.newBuilder()
-            var selectedProductDetails: ProductDetails? = null
-            productDetailsList.forEach { productDetails ->
-                if (productDetails.productId == productId) {
-                    selectedProductDetails = productDetails
-                    return@forEach
+            purchaseHistoryRecordList?.forEach { purchase ->
+                val item = JSONObject()
+                item.put("productId", purchase.products.firstOrNull() ?: "")
+                item.put("transactionDate", purchase.purchaseTime)
+                item.put("transactionReceipt", purchase.originalJson)
+                item.put("purchaseToken", purchase.purchaseToken)
+                item.put("dataAndroid", purchase.originalJson)
+                item.put("signatureAndroid", purchase.signature)
+                items.put(item)
+            }
+            safeChannel.success(items.toString())
+        } catch (je: JSONException) {
+            je.printStackTrace()
+            safeChannel.error(TAG, BillingError.E_BILLING_RESPONSE_JSON_PARSE_ERROR, je.message)
+        }
+    }
+}
+
+   private fun getProductsByType(productType: String, call: MethodCall, safeChannel: MethodResultWrapper) {
+    val productIds: ArrayList<String> = call.argument<ArrayList<String>>("productIds")!!
+    val params = ArrayList<QueryProductDetailsParams.Product>()
+    productIds.forEach { productId ->
+        params.add(
+            QueryProductDetailsParams.Product.newBuilder()
+                .setProductId(productId)
+                .setProductType(productType)
+                .build()
+        )
+    }
+
+    billingClient!!.queryProductDetailsAsync(
+        QueryProductDetailsParams.newBuilder().setProductList(params).build()
+    ) { billingResult, products ->
+        if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
+            val errorData = BillingError.getErrorFromResponseData(billingResult.responseCode)
+            safeChannel.error(call.method, errorData.code, errorData.message)
+            return@queryProductDetailsAsync
+        }
+
+        try {
+            val items = JSONArray()
+            products.forEach { productDetails ->
+                if (!productDetailsList.contains(productDetails)) {
+                    productDetailsList.add(productDetails)
                 }
-            }
-            if (selectedProductDetails == null) {
-                val debugMessage = "The selected product was not found. Please fetch products first by calling getItems"
-                safeChannel.error(TAG, "buyItemByType", debugMessage)
-                return
-            }
 
-            val productDetailsParamsBuilder = ProductDetailsParams.newBuilder().setProductDetails(selectedProductDetails!!)
-            var offerToken: String? = null
+                val item = JSONObject()
+                item.put("productId", productDetails.productId)
+                item.put("type", productDetails.productType)
+                item.put("title", productDetails.title)
+                item.put("description", productDetails.description)
 
-            if (type == BillingClient.ProductType.SUBS) {
-                if (offerTokenIndex != null) {
-                    offerToken = selectedProductDetails!!.subscriptionOfferDetails?.getOrNull(offerTokenIndex)?.offerToken
-                }
-                if (offerToken == null) {
-                    offerToken = selectedProductDetails!!.subscriptionOfferDetails?.firstOrNull()?.offerToken
-                }
-                productDetailsParamsBuilder.setOfferToken(offerToken ?: "")
-            }
-
-            val productDetailsParamsList = listOf(productDetailsParamsBuilder.build())
-            builder.setProductDetailsParamsList(productDetailsParamsList)
-
-            val params = SubscriptionUpdateParams.newBuilder()
-
-            if (obfuscatedAccountId != null) {
-                builder.setObfuscatedAccountId(obfuscatedAccountId)
-            }
-            if (obfuscatedProfileId != null) {
-                builder.setObfuscatedProfileId(obfuscatedProfileId)
-            }
-
-            when (prorationMode) {
-                -1 -> {} // Ignore
-                BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.IMMEDIATE_AND_CHARGE_PRORATED_PRICE -> {
-                    params.setReplacementMode(BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.IMMEDIATE_AND_CHARGE_PRORATED_PRICE)
-                    if (type != BillingClient.ProductType.SUBS) {
-                        safeChannel.error(
-                            TAG,
-                            "buyItemByType",
-                            "CHARGE_PRORATED_PRICE for replacement mode only works in subscription purchase."
-                        )
-                        return
+                if (productDetails.productType == BillingClient.ProductType.INAPP) {
+                    val oneTimePurchaseOfferDetails = productDetails.oneTimePurchaseOfferDetails
+                    if (oneTimePurchaseOfferDetails != null) {
+                        item.put("price", (oneTimePurchaseOfferDetails.priceAmountMicros / 1_000_000.0).toString())
+                        item.put("currency", oneTimePurchaseOfferDetails.priceCurrencyCode)
+                        item.put("localizedPrice", oneTimePurchaseOfferDetails.formattedPrice)
                     }
-                }
-                BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.IMMEDIATE_WITHOUT_PRORATION -> params.setReplacementMode(BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.IMMEDIATE_WITHOUT_PRORATION)
-                BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.DEFERRED -> params.setReplacementMode(BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.DEFERRED)
-                BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.IMMEDIATE_WITH_TIME_PRORATION -> params.setReplacementMode(BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.IMMEDIATE_WITH_TIME_PRORATION)
-                BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.IMMEDIATE_AND_CHARGE_FULL_PRICE -> params.setReplacementMode(BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.IMMEDIATE_AND_CHARGE_FULL_PRICE)
-                else -> params.setReplacementMode(BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.UNKNOWN_REPLACEMENT_MODE)
-            }
+                } else if (productDetails.productType == BillingClient.ProductType.SUBS) {
+                    val firstOffer = productDetails.subscriptionOfferDetails?.firstOrNull { it.offerId == null }
+                    if (firstOffer != null && firstOffer.pricingPhases.pricingPhaseList.isNotEmpty()) {
+                        val defaultPricingPhase = firstOffer.pricingPhases.pricingPhaseList[0]
+                        item.put("price", (defaultPricingPhase.priceAmountMicros / 1_000_000.0).toString())
+                        item.put("currency", defaultPricingPhase.priceCurrencyCode)
+                        item.put("localizedPrice", defaultPricingPhase.formattedPrice)
+                        item.put("subscriptionPeriodAndroid", defaultPricingPhase.billingPeriod)
+                    }
 
-            if (purchaseToken != null) {
-                params.setOldPurchaseToken(purchaseToken)
-                builder.setSubscriptionUpdateParams(params.build())
+                    val subs = JSONArray()
+                    productDetails.subscriptionOfferDetails?.forEach { offer ->
+                        val offerItem = JSONObject()
+                        offerItem.put("offerId", offer.offerId ?: "")
+                        offerItem.put("basePlanId", offer.basePlanId)
+                        offerItem.put("offerToken", offer.offerToken)
+                        val pricingPhases = JSONArray()
+                        offer.pricingPhases.pricingPhaseList.forEach { pricing ->
+                            val pricingPhase = JSONObject()
+                            pricingPhase.put("price", (pricing.priceAmountMicros / 1_000_000.0).toString())
+                            pricingPhase.put("formattedPrice", pricing.formattedPrice)
+                            pricingPhase.put("billingPeriod", pricing.billingPeriod)
+                            pricingPhase.put("currencyCode", pricing.priceCurrencyCode)
+                            pricingPhase.put("recurrenceMode", pricing.recurrenceMode)
+                            pricingPhase.put("billingCycleCount", pricing.billingCycleCount)
+                            pricingPhases.put(pricingPhase)
+                        }
+                        offerItem.put("pricingPhases", pricingPhases)
+                        subs.put(offerItem)
+                    }
+                    item.put("subscriptionOffers", subs)
+                }
+
+                items.put(item)
             }
-            if (activity != null) {
-                billingClient!!.launchBillingFlow(activity!!, builder.build())
+            safeChannel.success(items.toString())
+        } catch (je: JSONException) {
+            je.printStackTrace()
+            safeChannel.error(TAG, BillingError.E_BILLING_RESPONSE_JSON_PARSE_ERROR, je.message)
+        } catch (fe: FlutterException) {
+            safeChannel.error(call.method, fe.message, fe.localizedMessage)
+        }
+    }
+}
+
+  private fun buyProduct(call: MethodCall, safeChannel: MethodResultWrapper) {
+    try {
+        val type = if (call.argument<String>("type") == "subs") BillingClient.ProductType.SUBS else BillingClient.ProductType.INAPP
+        val obfuscatedAccountId = call.argument<String>("obfuscatedAccountId")
+        val obfuscatedProfileId = call.argument<String>("obfuscatedProfileId")
+        val productId = call.argument<String>("productId")
+        val prorationMode = call.argument<Int>("prorationMode") ?: -1
+        val purchaseToken = call.argument<String>("purchaseToken")
+        val offerTokenIndex = call.argument<Int>("offerTokenIndex")
+        val builder = BillingFlowParams.newBuilder()
+        var selectedProductDetails: ProductDetails? = null
+        productDetailsList.forEach { productDetails ->
+            if (productDetails.productId == productId) {
+                selectedProductDetails = productDetails
+                return@forEach
             }
-        } catch (e: Exception) {
-            safeChannel.error(TAG, "buyItemByType", e.message)
+        }
+        if (selectedProductDetails == null) {
+            val debugMessage = "The selected product was not found. Please fetch products first by calling getItems"
+            safeChannel.error(TAG, "buyItemByType", debugMessage)
             return
         }
-    }
 
+        val productDetailsParamsBuilder = ProductDetailsParams.newBuilder().setProductDetails(selectedProductDetails!!)
+        var offerToken: String? = null
+
+        if (type == BillingClient.ProductType.SUBS) {
+            if (offerTokenIndex != null) {
+                offerToken = selectedProductDetails!!.subscriptionOfferDetails?.getOrNull(offerTokenIndex)?.offerToken
+            }
+            if (offerToken == null) {
+                offerToken = selectedProductDetails!!.subscriptionOfferDetails?.firstOrNull()?.offerToken
+            }
+            productDetailsParamsBuilder.setOfferToken(offerToken ?: "")
+        }
+
+        val productDetailsParamsList = listOf(productDetailsParamsBuilder.build())
+        builder.setProductDetailsParamsList(productDetailsParamsList)
+
+        val params = SubscriptionUpdateParams.newBuilder()
+
+        if (obfuscatedAccountId != null) {
+            builder.setObfuscatedAccountId(obfuscatedAccountId)
+        }
+        if (obfuscatedProfileId != null) {
+            builder.setObfuscatedProfileId(obfuscatedProfileId)
+        }
+
+        when (prorationMode) {
+            -1 -> {} // Ignore
+            BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.WITH_TIME_PRORATION -> {
+                params.setReplacementMode(BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.WITH_TIME_PRORATION)
+            }
+            BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.WITHOUT_PRORATION -> {
+                params.setReplacementMode(BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.WITHOUT_PRORATION)
+            }
+            BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.DEFERRED -> {
+                params.setReplacementMode(BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.DEFERRED)
+            }
+            BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.CHARGE_FULL_PRICE -> {
+                params.setReplacementMode(BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.CHARGE_FULL_PRICE)
+            }
+            BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.CHARGE_PRORATED_PRICE -> {
+                params.setReplacementMode(BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.CHARGE_PRORATED_PRICE)
+            }
+            else -> {
+                params.setReplacementMode(BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.UNKNOWN_REPLACEMENT_MODE)
+            }
+        }
+
+        if (purchaseToken != null) {
+            params.setOldPurchaseToken(purchaseToken)
+            builder.setSubscriptionUpdateParams(params.build())
+        }
+        if (activity != null) {
+            billingClient!!.launchBillingFlow(activity!!, builder.build())
+        }
+    } catch (e: Exception) {
+        safeChannel.error(TAG, "buyItemByType", e.message)
+    }
+}
     private val purchasesUpdatedListener = PurchasesUpdatedListener { billingResult, purchases ->
         try {
             if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
