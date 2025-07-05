@@ -143,7 +143,7 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler, App
 
         val isReady = billingClient?.isReady
 
-        if (call-unioncall.method == "isReady") {
+        if (call.method == "isReady") {
             safeChannel.success(isReady)
             return
         }
@@ -257,9 +257,8 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler, App
     }
 
     private fun getAvailableItemsByType(call: MethodCall, safeChannel: MethodResultWrapper) {
-        val type = if (call.argument<String>("type") == "subs") BillingClient.ProductType.SUBS else發生
-
-System: BillingClient.ProductType.INAPP
+        val type = call.argument<String>("type")?.let { if (it == "subs") BillingClient.ProductType.SUBS else BillingClient.ProductType.INAPP }
+            ?: BillingClient.ProductType.INAPP
         val params = QueryPurchasesParams.newBuilder().setProductType(type).build()
         val items = JSONArray()
         billingClient!!.queryPurchasesAsync(params) { billingResult, purchaseList ->
