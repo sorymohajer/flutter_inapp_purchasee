@@ -94,7 +94,7 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler, App
 
                     try {
                         val isConnected = billingResult.responseCode == BillingClient.BillingResponseCode.OK
-                        updateConnectionStatus(isConnected)
+                        updateConnectionStatus(isConnected, safeChannel)
 
                         val resultMessage = if (isConnected) {
                             "Billing client ready"
@@ -115,15 +115,13 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler, App
                 override fun onBillingServiceDisconnected() {
                     if (alreadyFinished) return
                     alreadyFinished = true
-                    updateConnectionStatus(false)
+                    updateConnectionStatus(false, safeChannel)
                 }
 
-                private fun updateConnectionStatus(isConnected: Boolean) {
+                private fun updateConnectionStatus(isConnected: Boolean, channel: MethodResultWrapper) {
                     try {
-                        val item = JSONObject().apply {
-                            put("connected", isConnected)
-                        }
-                        safeChannel.invokeMethod("connection-updated", item.toString())
+                        val item = JSONObject().apply { put("connected", isConnected) }
+                        channel.invokeMethod("connection-updated", item.toString())
                     } catch (je: JSONException) {
                         je.printStackTrace()
                     }
@@ -193,10 +191,9 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler, App
                 )
                 return true
             } catch (e: ActivityNotFoundException) {
-                // ignore
+                return false
             }
         }
-        return false
     }
 
     private fun showInAppMessages(safeChannel: MethodResultWrapper) {
@@ -232,11 +229,8 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler, App
                         val listener = ConsumeResponseListener { _, outToken ->
                             array.add(outToken)
                             if (purchaseList.size == array.size) {
-                                try
-
-{
+                                try {
                                     safeChannel.success(array.toString())
-                                    return@ConsumeResponseListener
                                 } catch (e: FlutterException) {
                                     Log.e(TAG, e.message!!)
                                 }
@@ -251,7 +245,7 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler, App
                     )
                 }
             }
-        } catch (err: Error) {
+        } catch (err: Exception) {
             safeChannel.error(call.method, err.message, "")
         }
     }
@@ -265,7 +259,7 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler, App
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                 for (purchase in purchaseList) {
                     val item = JSONObject()
-                    item.put("productId", purchase.products[0])
+                    item.put("productId", purchase.products.firstOrNull() ?: "")
                     item.put("transactionId", purchase.orderId)
                     item.put("transactionDate", purchase.purchaseTime)
                     item.put("transactionReceipt", purchase.originalJson)
@@ -308,14 +302,12 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler, App
                 item.put("code", errorData.code)
                 item.put("message", errorData.message)
                 safeChannel.success(item.toString())
-                return@consumeAsync
             } catch (je: JSONException) {
                 safeChannel.error(
                     TAG,
                     BillingError.E_BILLING_RESPONSE_JSON_PARSE_ERROR,
                     je.message
                 )
-                return@consumeAsync
             }
         }
     }
@@ -516,24 +508,12 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler, App
 
             when (prorationMode) {
                 -1 -> {} // Ignore
-                1 -> { // IMMEDIATE_WITH_TIME_PRORATION
-                    params.setReplacementMode(SubscriptionUpdateParams.ReplacementMode.WITH_TIME_PRORATION)
-                }
-                2 -> { // IMMEDIATE_AND_CHARGE_PRORATED_PRICE
-                    params.setReplacementMode(SubscriptionUpdateParams.ReplacementMode.CHARGE_PRORATED_PRICE)
-                }
-                3 -> { // IMMEDIATE_WITHOUT_PRORATION
-                    params.setReplacementMode(SubscriptionUpdateParams.ReplacementMode.WITHOUT_PRORATION)
-                }
-                4 -> { // DEFERRED
-                    params.setReplacementMode(SubscriptionUpdateParams.ReplacementMode.DEFERRED)
-                }
-                5 -> { // IMMEDIATE_AND_CHARGE_FULL_PRICE
-                    params.setReplacementMode(SubscriptionUpdateParams.ReplacementMode.CHARGE_FULL_PRICE)
-                }
-                else -> {
-                    params.setReplacementMode(SubscriptionUpdateParams.ReplacementMode.UNKNOWN_REPLACEMENT_MODE)
-                }
+                1 -> params.setReplacementMode(SubscriptionUpdateParams.ReplacementMode.WITH_TIME_PRORATION)
+                2 -> params.setReplacementMode(SubscriptionUpdateParams.ReplacementMode.CHARGE_PRORATED_PRICE)
+                3 -> params.setReplacementMode(SubscriptionUpdateParams.ReplacementMode.WITHOUT_PRORATION)
+                4 -> params.setReplacementMode(SubscriptionUpdateParams.ReplacementMode.DEFERRED)
+                5 -> params.setReplacementMode(SubscriptionUpdateParams.ReplacementMode.CHARGE_FULL_PRICE)
+                else -> params.setReplacementMode(SubscriptionUpdateParams.ReplacementMode.UNKNOWN_REPLACEMENT_MODE)
             }
 
             if (purchaseToken != null) {
@@ -563,7 +543,7 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler, App
             if (purchases != null) {
                 purchases.forEach { purchase ->
                     val item = JSONObject()
-                    item.put("productId", purchase.products[0])
+                    item.put("productId", purchase.products.firstOrNull() ?: "")
                     item.put("transactionId", purchase.orderId)
                     item.put("transactionDate", purchase.purchaseTime)
                     item.put("transactionReceipt", purchase.originalJson)
@@ -581,7 +561,6 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler, App
                         item.put("obfuscatedProfileIdAndroid", accountIdentifiers.obfuscatedProfileId)
                     }
                     safeResult!!.invokeMethod("purchase-updated", item.toString())
-                    return@PurchasesUpdatedListener
                 }
             } else {
                 val json = JSONObject()
@@ -591,11 +570,9 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler, App
                 json.put("code", errorData.code)
                 json.put("message", "purchases returns null.")
                 safeResult!!.invokeMethod("purchase-error", json.toString())
-                return@PurchasesUpdatedListener
             }
         } catch (je: JSONException) {
             safeResult!!.invokeMethod("purchase-error", je.message)
-            return@PurchasesUpdatedListener
         }
     }
 
