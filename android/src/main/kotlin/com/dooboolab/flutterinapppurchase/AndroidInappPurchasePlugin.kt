@@ -85,6 +85,7 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler, App
             billingClient = BillingClient.newBuilder(context ?: return).apply {
                 setListener(purchasesUpdatedListener)
                 enablePendingPurchases(PendingPurchasesParams.newBuilder().enableOneTimeProducts().build())
+                enableAutoServiceReconnection()
             }.build()
 
             billingClient?.startConnection(object : BillingClientStateListener {
