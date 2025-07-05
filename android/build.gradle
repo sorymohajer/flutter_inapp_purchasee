@@ -2,13 +2,13 @@ group 'com.dooboolab.flutterinapppurchase'
 version '1.0-SNAPSHOT'
 
 buildscript {
-    ext.kotlin_version = '1.9.24' // Updated to latest stable Kotlin version
+    ext.kotlin_version = '1.9.24'
     repositories {
         google()
         mavenCentral()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.1.0' // Updated Gradle plugin
+        classpath 'com.android.tools.build:gradle:8.1.0'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
@@ -25,7 +25,7 @@ apply plugin: 'kotlin-android'
 
 android {
     namespace 'com.dooboolab.flutterinapppurchase'
-    compileSdkVersion 34 // Updated to match your app's compileSdkVersion
+    compileSdkVersion 34
 
     defaultConfig {
         minSdkVersion 21
@@ -34,6 +34,9 @@ android {
 
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
+        main {
+            jniLibs.srcDirs = ['libs']
+        }
     }
 
     lintOptions {
@@ -41,17 +44,18 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_11 // Updated to Java 11
+        sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11
     }
 
     kotlinOptions {
-        jvmTarget = '11' // Updated to Java 11
+        jvmTarget = '11'
+        freeCompilerArgs = ['-Xlint:unchecked', '-Xlint:deprecation']
     }
 }
 
 dependencies {
     implementation "com.android.billingclient:billing-ktx:8.0.0"
-    implementation files('jars/in-app-purchasing-2.0.76.jar') // For Amazon support
+    implementation files('jars/in-app-purchasing-2.0.76.jar')
     implementation 'androidx.annotation:annotation:1.6.0'
 }
