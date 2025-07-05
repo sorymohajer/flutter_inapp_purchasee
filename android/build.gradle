@@ -49,8 +49,8 @@ android {
     }
 
     kotlinOptions {
-        jvmTarget = '11'
-        freeCompilerArgs = ['-Xlint:unchecked', '-Xlint:deprecation']
+    jvmTarget = '11'
+    freeCompilerArgs = ['-Xlint:unchecked', '-Xlint:deprecation', '-Xlint:-options']
     }
 }
 
